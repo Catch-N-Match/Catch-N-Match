@@ -1,24 +1,14 @@
-# 데이터 처리 및 분석
+# 데이터 처리
 pandas
 numpy
 pyarrow
-scikit-learn
+
+# GCP
 google-cloud-bigquery
 db-dtypes
-
-# MLOps 및 스토리지 연동
-mlflow==2.14.3
-psycopg2-binary
-boto3
-s3fs
-
-# 분산 처리
-pyspark==3.5.1
-
-apache-airflow==2.9.1
-apache-airflow-providers-apache-spark
-apache-airflow-providers-amazon
-apache-airflow-providers-google
 google-cloud-storage
 
-protobuf==4.25.3 # mlflow 실행 오류 문제 
+# Airflow
+apache-airflow==2.9.1
+apache-airflow-providers-google
+psycopg2-binary
