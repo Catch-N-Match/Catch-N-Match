@@ -2,50 +2,35 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ARG AIRFLOW_VERSION=2.9.1
-ARG PYTHON_MAJOR_MINOR=3.11
-ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_MAJOR_MINOR}.txt"
+WORKDIR /app
 
-# 기본 유틸
+# 기본 유틸리티 (XGBoost 실행용 libgomp1 필수로 추가)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl git \
+    build-essential curl git libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# 파이썬 패키지
-# (필요 시 팀 환경에 맞게 추가)
-RUN pip install --no-cache-dir \
-    pandas numpy scikit-learn \
-    mlflow==2.14.3 \
-    boto3 \
-    pyarrow \
-    matplotlib \
-    google-cloud-bigquery \
-    db-dtypes \
-    pyspark==3.5.1
+# 1. 폴더 미리 생성
+RUN mkdir -p /app/data /app/output /app/models
+COPY src/ML/models/ /app/models/
 
-RUN pip install --no-cache-dir "protobuf<5.0.0" 
-RUN pip install --no-cache-dir "mlflow==2.14.3"
+# 2. 파일 복사 (상대 경로 주의!)
+# 빌드 명령을 실행하는 폴더에 ml_predict.py와 models 폴더가 같이 있어야 합니다.
+COPY ./src/ML/ml_predict.py /app/ml_predict.py
+COPY ./src/ML/models/purchase_xgb.json /app/models/purchase_xgb.json
+COPY ./docker/requirements.txt /app/requirements.txt
+COPY src/ML/models/purchase_xgb.json /app/models/purchase_xgb.json
 
-# Airflow 및 관련 패키지 설치
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# 1. 기초 데이터 라이브러리 먼저 설치
-RUN pip install --no-cache-dir pandas numpy pyarrow boto3 psycopg2-binary
+# 3. 라이브러리 설치 (속도를 위해 무거운 것부터)
+RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir xgboost lightgbm catboost joblib pandas numpy scikit-learn
 
-# 2. ML 및 스파크 관련 설치
-RUN pip install --no-cache-dir scikit-learn mlflow==2.14.3 pyspark==3.5.1
-
-# 3. 가장 무겁고 까다로운 Airflow를 마지막에 '제약 사항' 없이 설치
+# 4. Airflow 및 기타 (팀장님 기존 코드 유지)
 RUN pip install --no-cache-dir "apache-airflow==2.9.1" \
     apache-airflow-providers-apache-spark \
     apache-airflow-providers-amazon \
     google-cloud-bigquery db-dtypes s3fs
 
-WORKDIR /app
-
-# COPY src/ /app/src/
-
-
+CMD ["python", "ml_predict.py"]
