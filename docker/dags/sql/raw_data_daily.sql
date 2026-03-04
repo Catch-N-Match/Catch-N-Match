@@ -358,7 +358,7 @@ SELECT
 FROM `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*`
 LEFT JOIN UNNEST(event_params) AS ep
 LEFT JOIN UNNEST(items) AS i
-WHERE _TABLE_SUFFIX = '{{ ds_nodash }}'
+WHERE _TABLE_SUFFIX = '{{ ti.xcom_pull(task_ids="compute_ga4_date") }}'
 GROUP BY ALL
 )
 
