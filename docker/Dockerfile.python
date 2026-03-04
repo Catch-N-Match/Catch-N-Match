@@ -4,33 +4,21 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
-# 기본 유틸리티 (XGBoost 실행용 libgomp1 필수로 추가)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl git libgomp1 \
+    build-essential curl git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # 1. 폴더 미리 생성
-RUN mkdir -p /app/data /app/output /app/models
-COPY src/ML/models/ /app/models/
+RUN mkdir -p /app/data
 
-# 2. 파일 복사 (상대 경로 주의!)
-# 빌드 명령을 실행하는 폴더에 ml_predict.py와 models 폴더가 같이 있어야 합니다.
-COPY ./src/ML/ml_predict.py /app/ml_predict.py
-COPY ./src/ML/models/purchase_xgb.json /app/models/purchase_xgb.json
+# 2. 파일 복사
 COPY ./docker/requirements.txt /app/requirements.txt
-COPY src/ML/models/purchase_xgb.json /app/models/purchase_xgb.json
 
-
-# 3. 라이브러리 설치 (속도를 위해 무거운 것부터)
+# 3. 라이브러리 설치
 RUN pip install --no-cache-dir -r /app/requirements.txt
-RUN pip install --no-cache-dir xgboost lightgbm catboost joblib pandas numpy scikit-learn
 
-# 4. Airflow 및 기타 (팀장님 기존 코드 유지)
+# 4. Airflow (requirements.txt와 별도 레이어로 캐시 분리)
 RUN pip install --no-cache-dir "apache-airflow==2.9.1" \
-    apache-airflow-providers-apache-spark \
-    apache-airflow-providers-amazon \
-    google-cloud-bigquery db-dtypes s3fs
-
-CMD ["python", "ml_predict.py"]
+    google-cloud-bigquery db-dtypes
