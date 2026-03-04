@@ -73,7 +73,7 @@ with DAG(
     dag_id="daily_ga4_ingestion",
     start_date=pendulum.datetime(2021, 1, 17, tz="UTC"),
     schedule_interval="@daily",
-    catchup=True,
+    catchup=False,
     max_active_runs=3,
     tags=["ga4", "ingestion"],
 ) as dag:
