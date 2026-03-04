@@ -18,5 +18,7 @@ pyspark==3.5.1
 apache-airflow==2.9.1
 apache-airflow-providers-apache-spark
 apache-airflow-providers-amazon
+apache-airflow-providers-google
+google-cloud-storage
 
 protobuf==4.25.3 # mlflow 실행 오류 문제 

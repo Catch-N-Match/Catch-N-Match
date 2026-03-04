@@ -70,9 +70,15 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - BQ_DATASET=${BQ_DATASET}
+      - GCS_BUCKET=${GCS_BUCKET}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
+      - ../data/raw:/opt/airflow/data/raw
+      - ../credentials:/opt/airflow/credentials
     command: >
       bash -c "
       airflow db migrate &&
@@ -91,9 +97,15 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - BQ_DATASET=${BQ_DATASET}
+      - GCS_BUCKET=${GCS_BUCKET}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
+      - ../data/raw:/opt/airflow/data/raw
+      - ../credentials:/opt/airflow/credentials
     ports:
       - "8082:8080"
     command: airflow webserver
@@ -109,10 +121,16 @@ services:
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - BQ_DATASET=${BQ_DATASET}
+      - GCS_BUCKET=${GCS_BUCKET}
     volumes:
       - ..:/app
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
+      - ../data/raw:/opt/airflow/data/raw
+      - ../credentials:/opt/airflow/credentials
     command: airflow scheduler
 
   # ---------- Spark (Apache 순정 이미지) ----------
