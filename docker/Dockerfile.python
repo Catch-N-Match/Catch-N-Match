@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
+# [환경 설정] 기본 유틸리티 설치 (libgomp1: XGBoost 필수)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl git \
     && rm -rf /var/lib/apt/lists/*
@@ -17,17 +18,60 @@ RUN mkdir -p /app/data
 # 빌드 명령을 실행하는 폴더에 ml_predict.py와 models 폴더가 같이 있어야 합니다.
 COPY ./src/ML/ml_predict.py /app/ml_predict.py
 # COPY ./src/ML/models/purchase_xgb.json /app/models/purchase_xgb.json
+# [의존성 복사] 캐시 효율을 위해 소스 코드보다 requirements 파일을 먼저 복사합니다.
 COPY ./docker/requirements.txt /app/requirements.txt
-# COPY src/ML/models/purchase_xgb.json /app/models/purchase_xgb.json
+COPY ./docker/requirements-ML.txt /app/requirements-ML.txt
 
-# requirements 설치
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# [라이브러리 설치] pip 업그레이드 및 모든 requirements 통합 설치
+# 중복 설치를 방지하고 한 번의 RUN 명령으로 처리합니다.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r /app/requirements.txt && \
+    pip install --no-cache-dir -r /app/requirements-ML.txt
 
-# ✅ 설치 검증 (여기서 실패하면 빌드가 바로 실패)
-RUN python -c "import pandas as pd; print('pandas ok:', pd.__version__)"
+# [디렉토리 생성]
+RUN mkdir -p /app/data /app/output /app/models
 
-# ✅ 설치 검증 (여기서 실패하면 빌드가 바로 실패)
-RUN python -c "import pandas as pd; print('pandas ok:', pd.__version__)"
+# [파일 복사] 소스 및 모델 파일 복사
+COPY src/ML/models/ /app/models/
+COPY ./src/ML/ml_predict.py /app/ml_predict.py
+
+# [검증] 설치된 주요 패키지 확인 (선택 사항)
+RUN python -c "import pandas; import sklearn; import xgboost; print('Environment Setup OK')"
+
+CMD ["python", "ml_predict.py"]
+
+# FROM python:3.11-slim
+
+# ENV PYTHONDONTWRITEBYTECODE=1
+# ENV PYTHONUNBUFFERED=1
+# WORKDIR /app
+
+# # 기본 유틸리티 (XGBoost 실행용 libgomp1 필수로 추가)
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     build-essential curl git libgomp1 \
+#     && rm -rf /var/lib/apt/lists/*
+
+# RUN pip install --no-cache-dir pandas --upgrade pip setuptools wheel
+
+# # 1. 폴더 미리 생성
+# RUN mkdir -p /app/data /app/output /app/models
+# COPY src/ML/models/ /app/models/
+
+# # 2. 파일 복사 (상대 경로 주의!)
+# # 빌드 명령을 실행하는 폴더에 ml_predict.py와 models 폴더가 같이 있어야 합니다.
+# COPY ./src/ML/ml_predict.py /app/ml_predict.py
+# # COPY ./src/ML/models/purchase_xgb.json /app/models/purchase_xgb.json
+# COPY ./docker/requirements.txt /app/requirements.txt
+# # COPY src/ML/models/purchase_xgb.json /app/models/purchase_xgb.json
+
+# # requirements 설치
+# RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# # ✅ 설치 검증 (여기서 실패하면 빌드가 바로 실패)
+# RUN python -c "import pandas as pd; print('pandas ok:', pd.__version__)"
+
+# # ✅ 설치 검증 (여기서 실패하면 빌드가 바로 실패)
+# RUN python -c "import pandas as pd; print('pandas ok:', pd.__version__)"
 
 # 3. 라이브러리 설치
 RUN pip install --no-cache-dir -r /app/requirements.txt
