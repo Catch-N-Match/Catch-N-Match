@@ -25,3 +25,10 @@ pyspark==3.5.1
 apache-airflow==2.9.1
 apache-airflow-providers-google
 psycopg2-binary
+
+#ML
+scikit-learn
+xgboost
+lightgbm
+catboost
+joblib
