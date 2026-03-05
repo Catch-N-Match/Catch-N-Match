@@ -1,0 +1,9 @@
+# requirements-ML.txt
+
+numpy
+pandas
+scikit-learn
+xgboost
+lightgbm
+catboost
+joblib
