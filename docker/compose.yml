@@ -32,6 +32,7 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT=google-cloud-platform://?key_path=%2Fopt%2Fairflow%2Fcredentials%2Fservice_account.json
       - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - BQ_DATASET=${BQ_DATASET}
@@ -60,6 +61,7 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT=google-cloud-platform://?key_path=%2Fopt%2Fairflow%2Fcredentials%2Fservice_account.json
       - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - BQ_DATASET=${BQ_DATASET}
@@ -86,6 +88,7 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT=google-cloud-platform://?key_path=%2Fopt%2Fairflow%2Fcredentials%2Fservice_account.json
       - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - BQ_DATASET=${BQ_DATASET}
