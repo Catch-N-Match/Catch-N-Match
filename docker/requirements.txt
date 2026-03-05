@@ -8,7 +8,17 @@ google-cloud-bigquery
 db-dtypes
 google-cloud-storage
 
+# 분산 처리
+pyspark==3.5.1
+
 # Airflow
 apache-airflow==2.9.1
 apache-airflow-providers-google
 psycopg2-binary
+
+#ML
+scikit-learn
+xgboost
+lightgbm
+catboost
+joblib

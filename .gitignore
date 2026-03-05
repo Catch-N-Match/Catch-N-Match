@@ -45,6 +45,3 @@ checkpoint.txt
 
 # data files
 /data
-
-# GCP credentials (service account key)
-credentials/
