@@ -82,6 +82,7 @@ services:
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - BQ_DATASET=${BQ_DATASET}
