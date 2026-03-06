@@ -133,7 +133,9 @@ def load_and_preprocess():
 
     # 실행 및 Pandas 변환 (Streaming 엔진 사용)
     print("✅ 데이터 집계 및 최적화 실행 중...", flush=True)
-    features =  user_features.collect(engine="streaming").to_pandas()
+    # streaming 엔진은 polars ≥0.20에서 group_by 조합 시 0행 반환 버그 있음
+    # in-memory 엔진으로 변경 (일별 GA4 데이터 크기에 충분)
+    features = user_features.collect().to_pandas()
 
     # 메모리 최적화 및 반환
     # Polars Lazy는 q 객체 자체가 메모리를 거의 쓰지 않지만, 명시적으로 비워줍니다.
@@ -194,6 +196,30 @@ def predict_and_save(features: pd.DataFrame, ga4_date: str = None):
     else:
         prediction_date = datetime.datetime.now().strftime("%Y-%m-%d")
     print(f"prediction_date={prediction_date}", flush=True)
+
+    # 0행 가드: 전처리 결과가 비어있으면 빈 CSV 저장 후 정상 종료
+    # (CSV 데이터 없음, polars 파싱 실패 등 업스트림 이슈에 대한 방어)
+    if len(features) == 0:
+        print("⚠️ 처리할 유저 데이터가 없습니다. 빈 결과 파일을 생성합니다.", flush=True)
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        # T7: 빈 DataFrame (스키마 유지 → BQ APPEND 시 스키마 충돌 방지)
+        pd.DataFrame(columns=[
+            "user_pseudo_id", "purchase_probability", "predicted_purchase",
+            "churn_probability", "predicted_churn", "prediction_date",
+            "value_segment", "risk_segment"
+        ]).to_csv(os.path.join(OUTPUT_DIR, "t7_prediction_result.csv"), index=False)
+        # T8: 0으로 채운 요약 1행 (날짜별 트렌드 연속성 유지)
+        pd.DataFrame([{
+            "prediction_date": prediction_date, "total_users": 0,
+            "predicted_purchasers": 0, "predicted_churners": 0,
+            "predicted_purchase_rate": 0.0, "predicted_churn_rate": 0.0,
+            "avg_purchase_probability": 0.0, "avg_churn_probability": 0.0,
+            "high_value_count": 0, "high_risk_count": 0,
+            "actual_sessions": 0, "actual_revenue": 0.0,
+            "trend_purchase_rate": 0.0, "trend_churn_rate": 0.0
+        }]).to_csv(os.path.join(OUTPUT_DIR, "t8_prediction_trend.csv"), index=False)
+        print(f"✅ 빈 T7/T8 CSV 생성 완료 (prediction_date={prediction_date})", flush=True)
+        return
 
     print(f"Step 2: 모델 로드 및 예측 시작 (Model: {PURCHASE_MODEL_PATH})", flush=True)
     p_feature_cols = [
