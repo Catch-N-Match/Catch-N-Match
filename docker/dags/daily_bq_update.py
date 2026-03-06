@@ -26,6 +26,7 @@ DAG2: daily_bq_update
 """
 
 import os
+from datetime import timedelta
 
 import pendulum
 from airflow import DAG
@@ -40,10 +41,27 @@ GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 BQ_DATASET     = os.getenv("BQ_DATASET")
 
 # ---------------------------------------------------------------------------
-# XCom 템플릿: DAG1의 compute_ga4_date 태스크가 push한 ga4_date 값을 참조
-# Airflow의 Jinja 렌더링 시점에 실제 날짜 문자열(예: '20210117')로 치환됨
+# 날짜 시뮬레이션 기준 (DAG1과 동일)
+# DAG2는 DAG1보다 1분 늦게 실행되므로 execution_date가 달라
+# DAG1의 XCom을 직접 참조하면 execution_date 불일치로 None 반환됨.
+# → DAG2 내부에서 동일한 공식으로 ga4_date를 직접 계산하여 해결.
 # ---------------------------------------------------------------------------
-_GA4_DATE = "{{ ti.xcom_pull(dag_id='daily_ga4_ingestion', task_ids='compute_ga4_date') }}"
+GA4_SIMULATION_START = pendulum.datetime(2021, 1, 17, tz="UTC")
+
+
+def compute_ga4_date(execution_date, **context):
+    """DAG1과 동일한 공식으로 ga4_date 계산 (XCom push)."""
+    dag_start       = context["dag"].start_date
+    delta_seconds   = int((execution_date - dag_start).total_seconds())
+    delta_intervals = delta_seconds // 600  # 600초 = 10분 = 1 GA4 일
+    ga4_date        = GA4_SIMULATION_START.add(days=delta_intervals)
+    result          = ga4_date.format("YYYYMMDD")
+    print(f"execution_date={execution_date}  delta={delta_intervals}일  →  ga4_date={result}")
+    return result
+
+
+# XCom 템플릿: 로컬 compute_ga4_date 태스크에서 ga4_date 값을 참조
+_GA4_DATE = "{{ ti.xcom_pull(task_ids='compute_ga4_date') }}"
 
 
 def load_sql(filename: str) -> str:
@@ -79,9 +97,9 @@ def load_sql(filename: str) -> str:
 with DAG(
     dag_id="daily_bq_update",
     start_date=pendulum.datetime(2026, 3, 6, 0, 0, 0, tz="UTC"),  # DAG1과 동일한 시작일 고정
-    schedule_interval="0/10 * * * *",  # 매시 00/10/20/30/40/50분 실행 (테스트용, 실제 배포 시 @daily로 복구)
-    catchup=False,                      # 과거 날짜 소급 실행 비활성화
-    max_active_runs=1,                  # 동시 실행 제한 (DAG1과 순서 보장)
+    schedule_interval="1/10 * * * *",  # DAG1(00분)보다 1분 늦게 실행 → 매시 01/11/21/31/41/51분
+    catchup=True,                       # start_date부터 순차 실행 → Jan 17부터 시작 보장
+    max_active_runs=1,                  # 동시 실행 1개로 제한 → 날짜 순서 보장
     tags=["analytics", "bigquery"],
 ) as dag:
 
@@ -94,10 +112,22 @@ with DAG(
     wait_for_dag1 = ExternalTaskSensor(
         task_id="wait_for_dag1",
         external_dag_id="daily_ga4_ingestion",
-        external_task_id="merge_csv_files",   # DAG1의 마지막 태스크
+        external_task_id="merge_csv_files",    # DAG1의 마지막 태스크
+        execution_delta=timedelta(minutes=1),  # DAG2는 1분 늦게 실행되므로 1분 전 DAG1 run을 참조
         timeout=7200,                          # 2시간 대기 후 실패
         poke_interval=60,                      # 60초마다 완료 여부 확인
         mode="reschedule",                     # 대기 중 worker 슬롯 반환
+    )
+
+    # -----------------------------------------------------------------------
+    # Task 0-1: ga4_date 계산 (DAG1과 동일한 공식, XCom push)
+    # DAG1의 XCom을 직접 참조하지 않고 로컬에서 재계산
+    # (DAG1과 execution_date가 1분 다르므로 XCom 직접 참조 시 None 반환)
+    # wait_for_dag1과 병렬 실행 가능 (서로 독립적)
+    # -----------------------------------------------------------------------
+    get_ga4_date = PythonOperator(
+        task_id="compute_ga4_date",
+        python_callable=compute_ga4_date,
     )
 
     # -----------------------------------------------------------------------
@@ -241,7 +271,9 @@ with DAG(
     #                     └─► t5_device_channel_replace (병렬)
     #                             └─► t6_user_feature_replace
     # -----------------------------------------------------------------------
-    wait_for_dag1 >> append_to_stored_data
+    # compute_ga4_date와 wait_for_dag1은 병렬 실행 (서로 독립적)
+    # 둘 다 완료된 후 append_to_stored_data 실행
+    [get_ga4_date, wait_for_dag1] >> append_to_stored_data
 
     # stored-data-77days APPEND 완료 후 T1~T3 병렬 실행
     append_to_stored_data >> [t1_append, t2_order_append, t2_detail_append, t3_session_funnel_append]
