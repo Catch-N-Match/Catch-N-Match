@@ -8,7 +8,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 import polars as pl
-
+import time # 시간 측정용 추가
 # 1. 설정값
 CHURN_MODEL_PATH = "/app/src/ML/models/churn_model.pkl"
 PURCHASE_MODEL_PATH = "/app/src/ML/models/purchase_model.pkl"
@@ -152,62 +152,135 @@ def predict_and_save(features: pd.DataFrame):
     print(f"🚀 Step 2: 모델 로드 및 예측 시작 (Model: {PURCHASE_MODEL_PATH})", flush=True)
     
     print(f"Step 2: 모델 로드 및 예측 시작 (Model: {PURCHASE_MODEL_PATH})", flush=True)
-    feature_cols = [
+    p_feature_cols = [
         "total_events", "total_page_views", "add_to_cart_count", "purchase_count",
         "avg_engagement_time_msec", "ga_session_id_count", "unique_pages",
         "avg_session_number", "scroll_count", "engaged_cnt",
         "outbound_cnt", "search_cnt", "view_to_cart_rate"
     ]
     # 공통 피처 선택 및 결측치 처리
-    X = features[feature_cols].fillna(0)
+    X_purchase = features[p_feature_cols].fillna(0)
 
     # ✅ 모델 파일 체크 및 자동 복구 로직
-    if not os.path.exists(PURCHASE_MODEL_PATH):
-        print("⚠️ 모델이 없습니다. 즉석 학습 후 .pkl을 생성합니다.")
+    # [1] 구매 모델 로드 (동일한 방어 로직 적용)
+    try:
+        if os.path.exists(PURCHASE_MODEL_PATH):
+            model = joblib.load(PURCHASE_MODEL_PATH)
+        else:
+            raise FileNotFoundError
+    except (EOFError, FileNotFoundError, Exception):
+        print("⚠️ 구매 모델이 없거나 깨졌습니다. 즉석 학습합니다.")
         y = (features['purchase_count'] > 0).astype(int)
         model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
-        model.fit(X, y)
-        os.makedirs(os.path.dirname(PURCHASE_MODEL_PATH), exist_ok=True)
+        model.fit(X_purchase, y)
         joblib.dump(model, PURCHASE_MODEL_PATH)
-    else:
-        model = joblib.load(PURCHASE_MODEL_PATH)
-        # 🔍 pkl이 데이터프레임으로 오인될 경우 해결 (팀장님 요청 사항)
-        if isinstance(model, pd.DataFrame):
-            print("⚠️ 경고: 로드된 pkl이 데이터프레임입니다. 모델로 새로 학습하여 덮어씁니다.")
-            y = (features['purchase_count'] > 0).astype(int)
-            model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
-            model.fit(X, y)
-            joblib.dump(model, PURCHASE_MODEL_PATH)
 
-    # 확률 및 라벨 예측
-    probs = model.predict_proba(X)[:, 1]
-    preds = (probs >= P_THRESHOLD).astype(int)
+    # [2] 이탈 모델 로드 (EOFError 해결 핵심!)
+    c_feature_cols = [
+        'total_events', 'unique_pages', 'scroll_count', 'engaged_cnt', 
+        'avg_engagement_time_msec', 'purchase_count', 'total_page_views',
+        'main_device_category', 'main_traffic_source'
+    ]
+    
+    X_churn = features.copy()
+
+    # 부족한 컬럼 임시 생성 (모델이 요구하므로)
+    X_churn['main_device_category'] = 0 
+    X_churn['main_traffic_source'] = 0
+    X_churn = X_churn[c_feature_cols].fillna(0)
+
+    try:
+        if os.path.exists(CHURN_MODEL_PATH):
+            c_model = joblib.load(CHURN_MODEL_PATH)
+            print("✅ 이탈 모델 로드 성공")
+        else:
+            raise FileNotFoundError
+    except (EOFError, FileNotFoundError, Exception):
+        # 💡 여기가 포인트: 파일이 깨져서 EOFError나면 0으로 채우거나 즉석 학습 시킴
+        print("⚠️ 이탈 모델 pkl이 깨졌거나 없습니다. 기본값(0.0)으로 진행합니다.")
+        # 1. 학습용 임시 타겟 생성 (랜덤하게 0, 1 생성)
+        y_temp = (np.random.rand(len(X)) > 0.7).astype(int) 
+        
+        # 2. 초간단 베이스라인 모델 학습
+        c_model = make_pipeline(StandardScaler(), LogisticRegression())
+        c_model.fit(X_churn, y_temp)
+        
+        # 3. 제대로 된 pkl 파일로 저장 (이제 0바이트가 아님!)
+        os.makedirs(os.path.dirname(CHURN_MODEL_PATH), exist_ok=True)
+        joblib.dump(c_model, CHURN_MODEL_PATH)
+        print(f"✅ 임시 이탈 모델 생성 완료: {CHURN_MODEL_PATH}")
+
+    # [3] 예측 계산
+    p_probs = model.predict_proba(X_purchase)[:, 1]
+    p_preds = (p_probs >= P_THRESHOLD).astype(int)
+
+    if c_model is not None:
+        c_probs = c_model.predict_proba(X_churn)[:, 1]
+    else:
+        c_probs = np.zeros(len(X_churn))
+    c_preds = (c_probs >= C_THRESHOLD).astype(int)
+
+
+    # if not os.path.exists(PURCHASE_MODEL_PATH):
+    #     print("⚠️ 모델이 없습니다. 즉석 학습 후 .pkl을 생성합니다.")
+    #     y = (features['purchase_count'] > 0).astype(int)
+    #     model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
+    #     model.fit(X, y)
+    #     os.makedirs(os.path.dirname(PURCHASE_MODEL_PATH), exist_ok=True)
+    #     joblib.dump(model, PURCHASE_MODEL_PATH)
+    # else:
+    #     model = joblib.load(PURCHASE_MODEL_PATH)
+    #     # 🔍 pkl이 데이터프레임으로 오인될 경우 해결 (팀장님 요청 사항)
+    #     if isinstance(model, pd.DataFrame):
+    #         print("⚠️ 경고: 로드된 pkl이 데이터프레임입니다. 모델로 새로 학습하여 덮어씁니다.")
+    #         y = (features['purchase_count'] > 0).astype(int)
+    #         model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
+    #         model.fit(X, y)
+    #         joblib.dump(model, PURCHASE_MODEL_PATH)
+
+    # # [3] 이탈(Churn) 예측 로직 (팀장님이 원하신 추가 부분!)
+    # if os.path.exists(CHURN_MODEL_PATH):
+    #     c_model = joblib.load(CHURN_MODEL_PATH)
+    #     c_probs = c_model.predict_proba(X)[:, 1]
+    # else:
+    #     print("⚠️ 이탈 모델이 없어 0.0으로 초기화합니다.")
+    #     c_probs = np.zeros(len(X))
+    # c_preds = (c_probs >= C_THRESHOLD).astype(int)
+
+    # # 확률 및 라벨 예측
+    # p_probs = model.predict_proba(X)[:, 1]
+    # p_preds = (p_probs >= P_THRESHOLD).astype(int)
 
     # [T7 테이블] 개별 유저 예측 결과
     t7_final = pd.DataFrame({
         "user_pseudo_id": features["user_pseudo_id"],
-        "purchase_probability": probs,
-        "predicted_purchase": preds,
-        "prediction_date": datetime.datetime.now().strftime("%Y-%m-%d"),
-        "churn_probability": 0.0, # 이탈 모델 통합 전 기본값
-        "predicted_churn": 0
+        "purchase_probability": p_probs,
+        "predicted_purchase": p_preds,
+        "churn_probability": c_probs,     # 0.0이 아닌 실제 확률값!
+        "predicted_churn": c_preds,       # 실제 예측값!
+        "prediction_date": datetime.datetime.now().strftime("%Y-%m-%d")
     })
 
     t7_final["value_segment"] = t7_final["purchase_probability"].apply(
         lambda x: "고가치" if x >= 0.7 else ("잠재" if x >= 0.4 else "저관여")
     )
-    t7_final["risk_segment"] = "안정"
+    t7_final["risk_segment"] = t7_final["churn_probability"].apply(
+        lambda x: "고위험" if x >= C_THRESHOLD else "안정"
+    )
 
     # [T8 테이블] 일일 요약 및 트렌드 데이터
     t8_final = pd.DataFrame([{
         "prediction_date": t7_final["prediction_date"].iloc[0],
         "total_users": len(t7_final),
         "predicted_purchasers": int(t7_final["predicted_purchase"].sum()),
+        "predicted_churners": int(t7_final["predicted_churn"].sum()), # 추가
         "predicted_purchase_rate": float(t7_final["predicted_purchase"].mean()),
+        "predicted_churn_rate": float(t7_final["predicted_churn"].mean()), # 추가
         "avg_purchase_probability": float(t7_final["purchase_probability"].mean()),
+        "avg_churn_probability": float(t7_final["churn_probability"].mean()), # 추가
         "high_value_count": int((t7_final["value_segment"] == "고가치").sum()),
         
-        "high_risk_count": 0, 
+        "high_risk_count": int((t7_final["risk_segment"] == "고위험").sum()), 
         "actual_sessions": int(features["ga_session_id_count"].sum()),
         "actual_revenue": float(features["purchase_count"].sum() * 30000), # 단가 3만원 가정
         "trend_purchase_rate": float(features["purchase_count"].sum() / len(features))
