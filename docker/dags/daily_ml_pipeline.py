@@ -29,6 +29,7 @@ DAG3: daily_ml_pipeline
 import os
 import shutil
 import subprocess
+from datetime import timedelta
 
 import pendulum
 from airflow import DAG
@@ -56,9 +57,27 @@ ML_SCRIPT_PATH = "/app/src/ML/ml_predict.py"
 ML_INPUT_PATH = "/app/data/raw/raw_data_with_gmt.csv"
 
 # ---------------------------------------------------------------------------
-# XCom 템플릿: DAG1의 compute_ga4_date 태스크가 push한 ga4_date 값을 참조
+# 날짜 시뮬레이션 기준 (DAG1과 동일)
+# DAG3는 DAG1보다 2분 늦게 실행되므로 execution_date가 달라
+# DAG1의 XCom을 직접 참조하면 execution_date 불일치로 None 반환됨.
+# → DAG3 내부에서 동일한 공식으로 ga4_date를 직접 계산하여 해결.
 # ---------------------------------------------------------------------------
-_GA4_DATE = "{{ ti.xcom_pull(dag_id='daily_ga4_ingestion', task_ids='compute_ga4_date') }}"
+GA4_SIMULATION_START = pendulum.datetime(2021, 1, 17, tz="UTC")
+
+
+def compute_ga4_date(execution_date, **context):
+    """DAG1과 동일한 공식으로 ga4_date 계산 (XCom push)."""
+    dag_start       = context["dag"].start_date
+    delta_seconds   = int((execution_date - dag_start).total_seconds())
+    delta_intervals = delta_seconds // 600  # 600초 = 10분 = 1 GA4 일
+    ga4_date        = GA4_SIMULATION_START.add(days=delta_intervals)
+    result          = ga4_date.format("YYYYMMDD")
+    print(f"execution_date={execution_date}  delta={delta_intervals}일  →  ga4_date={result}")
+    return result
+
+
+# XCom 템플릿: 로컬 compute_ga4_date 태스크에서 ga4_date 값을 참조
+_GA4_DATE = "{{ ti.xcom_pull(task_ids='compute_ga4_date') }}"
 
 
 # ---------------------------------------------------------------------------
@@ -170,9 +189,9 @@ def upload_to_gcs(ga4_date: str, **_):
 with DAG(
     dag_id="daily_ml_pipeline",
     start_date=pendulum.datetime(2026, 3, 6, 0, 0, 0, tz="UTC"),  # DAG1과 동일한 시작일 고정
-    schedule_interval="0/10 * * * *",  # 매시 00/10/20/30/40/50분 실행 (테스트용, 실제 배포 시 @daily로 복구)
-    catchup=False,                      # 과거 날짜 소급 실행 비활성화
-    max_active_runs=1,                  # 동시 실행 제한
+    schedule_interval="2/10 * * * *",  # DAG1(00분)보다 2분 늦게 실행 → 매시 02/12/22/32/42/52분
+    catchup=True,                       # start_date부터 순차 실행 → Jan 17부터 시작 보장
+    max_active_runs=1,                  # 동시 실행 1개로 제한 → 날짜 순서 보장
     tags=["ml", "prediction"],
 ) as dag:
 
@@ -183,10 +202,22 @@ with DAG(
     wait_for_dag1 = ExternalTaskSensor(
         task_id="wait_for_dag1",
         external_dag_id="daily_ga4_ingestion",
-        external_task_id="merge_csv_files",  # DAG1의 마지막 태스크
-        timeout=7200,                         # 2시간 대기 후 실패
-        poke_interval=60,                     # 60초마다 완료 여부 확인
-        mode="reschedule",                    # 대기 중 worker 슬롯 반환
+        external_task_id="merge_csv_files",    # DAG1의 마지막 태스크
+        execution_delta=timedelta(minutes=2),  # DAG3는 2분 늦게 실행되므로 2분 전 DAG1 run을 참조
+        timeout=7200,                          # 2시간 대기 후 실패
+        poke_interval=60,                      # 60초마다 완료 여부 확인
+        mode="reschedule",                     # 대기 중 worker 슬롯 반환
+    )
+
+    # -----------------------------------------------------------------------
+    # Task 0-1: ga4_date 계산 (DAG1과 동일한 공식, XCom push)
+    # DAG1의 XCom을 직접 참조하지 않고 로컬에서 재계산
+    # (DAG1과 execution_date가 2분 다르므로 XCom 직접 참조 시 None 반환)
+    # wait_for_dag1과 병렬 실행 가능 (서로 독립적)
+    # -----------------------------------------------------------------------
+    get_ga4_date = PythonOperator(
+        task_id="compute_ga4_date",
+        python_callable=compute_ga4_date,
     )
 
     # -----------------------------------------------------------------------
@@ -279,4 +310,6 @@ with DAG(
     #                                                      ├─► upload_t7_to_bq (병렬)
     #                                                      └─► upload_t8_to_bq (병렬)
     # -----------------------------------------------------------------------
-    wait_for_dag1 >> prepare_input >> ml_predict >> upload_gcs >> [upload_t7_to_bq, upload_t8_to_bq]
+    # compute_ga4_date와 wait_for_dag1은 병렬 실행 (서로 독립적)
+    # 둘 다 완료된 후 prepare_ml_input 실행
+    [get_ga4_date, wait_for_dag1] >> prepare_input >> ml_predict >> upload_gcs >> [upload_t7_to_bq, upload_t8_to_bq]

@@ -96,8 +96,8 @@ with DAG(
     dag_id="daily_ga4_ingestion",
     start_date=pendulum.datetime(2026, 3, 6, 0, 0, 0, tz="UTC"),  # 배포 시점 고정 (재로드 시 delta_days 틀어짐 방지)
     schedule_interval="0/10 * * * *",  # 매시 00/10/20/30/40/50분 실행 (테스트용, 실제 배포 시 @daily로 복구)
-    catchup=False,
-    max_active_runs=3,
+    catchup=True,                       # start_date부터 순차 실행 → Jan 17부터 시작 보장
+    max_active_runs=1,                  # 동시 실행 1개로 제한 → 날짜 순서 보장 및 BQ 중복 방지
     tags=["ga4", "ingestion"],
 ) as dag:
 
