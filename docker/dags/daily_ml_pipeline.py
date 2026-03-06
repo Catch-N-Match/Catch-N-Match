@@ -102,10 +102,10 @@ def run_ml_predict(ga4_date: str, **_):
     # 출력 디렉터리 생성
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # ml_predict.py 실행
+    # ml_predict.py 실행 (ga4_date를 인수로 전달하여 prediction_date를 시뮬레이션 날짜로 저장)
     print(f"ml_predict.py 실행 시작 (ga4_date={ga4_date})")
     result = subprocess.run(
-        ["python", ML_SCRIPT_PATH],
+        ["python", ML_SCRIPT_PATH, ga4_date],
         capture_output=True,
         text=True,
     )
@@ -169,8 +169,8 @@ def upload_to_gcs(ga4_date: str, **_):
 # ---------------------------------------------------------------------------
 with DAG(
     dag_id="daily_ml_pipeline",
-    start_date=pendulum.today("UTC"),   # DAG1과 동일한 시작일 기준
-    schedule_interval="@daily",
+    start_date=pendulum.datetime(2026, 3, 6, 0, 0, 0, tz="UTC"),  # DAG1과 동일한 시작일 고정
+    schedule_interval="0/10 * * * *",  # 매시 00/10/20/30/40/50분 실행 (테스트용, 실제 배포 시 @daily로 복구)
     catchup=False,                      # 과거 날짜 소급 실행 비활성화
     max_active_runs=1,                  # 동시 실행 제한
     tags=["ml", "prediction"],

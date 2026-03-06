@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import gc
 import os
+import sys
 import joblib
 import datetime
 from sklearn.linear_model import LogisticRegression
@@ -175,10 +176,25 @@ def get_or_train_model(path, X, y_condition, model_name):
         return model
     return joblib.load(path)
 
-# 모델 있다면 
-def predict_and_save(features: pd.DataFrame):
+# 모델 있다면
+def predict_and_save(features: pd.DataFrame, ga4_date: str = None):
+    """
+    예측 결과를 T7/T8 CSV로 저장한다.
+
+    Args:
+        features: load_and_preprocess()가 반환한 유저별 피처 DataFrame
+        ga4_date: DAG3가 전달하는 GA4 시뮬레이션 날짜 (예: '20210117').
+                  None이면 오늘 날짜를 prediction_date로 사용한다.
+    """
     print(f"🚀 Step 2: 모델 로드 및 예측 시작 (Model: {PURCHASE_MODEL_PATH})", flush=True)
-    
+
+    # ga4_date가 있으면 시뮬레이션 날짜 사용, 없으면 오늘 날짜 fallback
+    if ga4_date:
+        prediction_date = datetime.datetime.strptime(ga4_date, "%Y%m%d").strftime("%Y-%m-%d")
+    else:
+        prediction_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    print(f"prediction_date={prediction_date}", flush=True)
+
     print(f"Step 2: 모델 로드 및 예측 시작 (Model: {PURCHASE_MODEL_PATH})", flush=True)
     p_feature_cols = [
         "total_events", "total_page_views", "add_to_cart_count", "purchase_count",
@@ -286,7 +302,7 @@ def predict_and_save(features: pd.DataFrame):
         "predicted_purchase": p_preds,
         "churn_probability": c_probs,     # 0.0이 아닌 실제 확률값!
         "predicted_churn": c_preds,       # 실제 예측값!
-        "prediction_date": datetime.datetime.now().strftime("%Y-%m-%d")
+        "prediction_date": prediction_date   # GA4 시뮬레이션 날짜 (DAG3 인수) 또는 오늘 날짜
     })
 
     t7_final["value_segment"] = t7_final["purchase_probability"].apply(
@@ -329,8 +345,11 @@ def predict_and_save(features: pd.DataFrame):
 
 if __name__ == "__main__":
     try:
-        feats = load_and_preprocess() # 데이터 반환
-        predict_and_save(feats) # 예측 및 저장
+        # DAG3가 ga4_date를 첫 번째 인수로 전달 (예: "20210117")
+        # 인수가 없으면 None → prediction_date가 오늘 날짜로 fallback
+        ga4_date_arg = sys.argv[1] if len(sys.argv) > 1 else None
+        feats = load_and_preprocess()           # 데이터 반환
+        predict_and_save(feats, ga4_date=ga4_date_arg)  # 예측 및 저장
     except Exception as e:
         print(f"❌ Error 발생: {e}", flush=True)
         raise
