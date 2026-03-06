@@ -128,6 +128,7 @@ with DAG(
             }
         },
         gcp_conn_id="google_cloud_default",
+        reattach_states={"DONE"},   # 같은 DAG run을 다른 로컬에서 실행 시 job ID 충돌 방지: 이미 완료된 job에 재연결
     )
 
     # ------------------------------------------------------------------
@@ -144,6 +145,7 @@ with DAG(
         export_format="CSV",
         print_header=True,
         gcp_conn_id="google_cloud_default",
+        reattach_states={"DONE"},   # 같은 DAG run을 다른 로컬에서 실행 시 job ID 충돌(409) 방지: 이미 완료된 job에 재연결
     )
 
     # ------------------------------------------------------------------
