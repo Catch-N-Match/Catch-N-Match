@@ -62,6 +62,8 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - BQ_DATASET=${BQ_DATASET}
+      - GCS_BUCKET=${GCS_BUCKET}
      
      
     volumes:
