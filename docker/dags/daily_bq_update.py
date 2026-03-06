@@ -78,8 +78,8 @@ def load_sql(filename: str) -> str:
 # ---------------------------------------------------------------------------
 with DAG(
     dag_id="daily_bq_update",
-    start_date=pendulum.today("UTC"),   # DAG1과 동일한 시작일 기준
-    schedule_interval="@daily",
+    start_date=pendulum.datetime(2026, 3, 6, 0, 0, 0, tz="UTC"),  # DAG1과 동일한 시작일 고정
+    schedule_interval="0/10 * * * *",  # 매시 00/10/20/30/40/50분 실행 (테스트용, 실제 배포 시 @daily로 복구)
     catchup=False,                      # 과거 날짜 소급 실행 비활성화
     max_active_runs=1,                  # 동시 실행 제한 (DAG1과 순서 보장)
     tags=["analytics", "bigquery"],

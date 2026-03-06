@@ -34,11 +34,14 @@ with open(_SQL_PATH) as f:
 # Python callable: GA4 날짜 계산 (실행일 → 시뮬레이션 GA4 날짜)
 # ---------------------------------------------------------------------------
 def compute_ga4_date(execution_date, **context):
-    dag_start  = context["dag"].start_date
-    delta_days = (execution_date - dag_start).days
-    ga4_date   = GA4_SIMULATION_START.add(days=delta_days)
-    result     = ga4_date.format("YYYYMMDD")
-    print(f"execution_date={execution_date.date()}  →  ga4_date={result}")
+    dag_start       = context["dag"].start_date
+    # 10분 인터벌 단위로 delta 계산 (600초 = 10분 = GA4 1일)
+    # @daily 대신 0/10 * * * * 스케줄 사용 시, 같은 날 여러 실행이 서로 다른 ga4_date를 가짐
+    delta_seconds   = int((execution_date - dag_start).total_seconds())
+    delta_intervals = delta_seconds // 600          # 600초 = 10분 = 1 GA4 일
+    ga4_date        = GA4_SIMULATION_START.add(days=delta_intervals)
+    result          = ga4_date.format("YYYYMMDD")
+    print(f"execution_date={execution_date}  delta={delta_intervals}일  →  ga4_date={result}")
     return result  # XCom으로 자동 push
 
 
@@ -91,8 +94,8 @@ _XCOM_GA4_DATE = "{{ ti.xcom_pull(task_ids='compute_ga4_date') }}"
 
 with DAG(
     dag_id="daily_ga4_ingestion",
-    start_date=pendulum.today("UTC"),   # 배포일 = Day 1 (→ GA4 2021-01-17)
-    schedule_interval="@daily",
+    start_date=pendulum.datetime(2026, 3, 6, 0, 0, 0, tz="UTC"),  # 배포 시점 고정 (재로드 시 delta_days 틀어짐 방지)
+    schedule_interval="0/10 * * * *",  # 매시 00/10/20/30/40/50분 실행 (테스트용, 실제 배포 시 @daily로 복구)
     catchup=False,
     max_active_runs=3,
     tags=["ga4", "ingestion"],
