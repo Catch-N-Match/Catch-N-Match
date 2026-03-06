@@ -54,7 +54,9 @@ obs_session_agg AS (
     DATE_DIFF(MAX(session_date), MIN(session_date), DAY)                      AS visit_span_days,
     -- 가장 많이 사용한 기기/유입 채널 추출
     APPROX_TOP_COUNT(session_device, 1)[OFFSET(0)].value                      AS main_device_category,
-    APPROX_TOP_COUNT(session_traffic_source, 1)[OFFSET(0)].value              AS main_traffic_source
+    APPROX_TOP_COUNT(session_traffic_source, 1)[OFFSET(0)].value              AS main_traffic_source,
+    -- 최초 세션의 유입 채널 (session_date, ga_session_id 오름차순 기준 첫 번째 값)
+    ARRAY_AGG(session_traffic_source ORDER BY session_date ASC, ga_session_id ASC LIMIT 1)[SAFE_OFFSET(0)] AS first_traffic_source
   FROM `{project}.{dataset}.T3_session_funnel_table`
   GROUP BY user_pseudo_id
 ),
@@ -135,7 +137,8 @@ SELECT
   COALESCE(j.last_funnel_step, 0) - COALESCE(j.prev_funnel_step, 0)           AS funnel_improvement,        -- 퍼널 진행도 변화
   e.unique_items_viewed,
   s.main_device_category,
-  s.main_traffic_source
+  s.main_traffic_source,
+  s.first_traffic_source   -- 최초 유입 채널
 
 FROM obs_users               AS u
 LEFT JOIN obs_event_agg      AS e ON u.user_pseudo_id = e.user_pseudo_id

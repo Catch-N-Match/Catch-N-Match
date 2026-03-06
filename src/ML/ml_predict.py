@@ -126,8 +126,11 @@ def load_and_preprocess():
     print(f"Features built: {features.shape}", flush=True)
     
     # 불필요한 객체 제거 및 가비지 컬렉션
-    gc.collect() 
-    
+    gc.collect()
+
+    # user_pseudo_id를 명시적으로 문자열 타입으로 변환 (BQ 업로드 시 float 추론 방지)
+    features["user_pseudo_id"] = features["user_pseudo_id"].astype(str)
+
     return features
 # ====================== 모델링 ===============================
 # 모델이 없을시 
