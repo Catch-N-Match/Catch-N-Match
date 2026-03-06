@@ -9,6 +9,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 import polars as pl
 import time # 시간 측정용 추가
+import psutil  # 메모리 측정을 위해 추가
+
 # 1. 설정값
 CHURN_MODEL_PATH = "/app/src/ML/models/churn_model.pkl"
 PURCHASE_MODEL_PATH = "/app/src/ML/models/purchase_model.pkl"
@@ -18,7 +20,18 @@ P_THRESHOLD = 0.825
 C_THRESHOLD = 0.65
 
 
+# 메모리 사용량 확인 함수
+def get_memory_usage():
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)  # MB 단위 변환
+
+
+
 def load_and_preprocess():
+    # [시작 지점 측정]
+    start_time = time.time()
+    start_mem = get_memory_usage()
+
     print("Step 1: 데이터 로드 및 전처리 시작...", flush=True)
 
     # [1] 사용할 컬럼 및 데이터 타입 정의  > 메모리 절감 
@@ -125,6 +138,18 @@ def load_and_preprocess():
     # Polars Lazy는 q 객체 자체가 메모리를 거의 쓰지 않지만, 명시적으로 비워줍니다.
     print(f"Features built: {features.shape}", flush=True)
     
+    # [종료 지점 측정]
+    end_time = time.time()
+    end_mem = get_memory_usage()
+    process_time = end_time - start_time
+    mem_diff = end_mem - start_mem
+
+    print("-" * 50)
+    print(f"📊 [전처리 성능 리포트]")
+    print(f"⏱️ 소요 시간: {process_time:.2f} 초")
+    print(f"💾 메모리 변화: {start_mem:.2f} MB -> {end_mem:.2f} MB (증가분: {mem_diff:.2f} MB)")
+    print(f"📈 처리 유저 수: {features.shape[0]} 명")
+    print("-" * 50)
     # 불필요한 객체 제거 및 가비지 컬렉션
     gc.collect() 
     
@@ -283,7 +308,8 @@ def predict_and_save(features: pd.DataFrame):
         "high_risk_count": int((t7_final["risk_segment"] == "고위험").sum()), 
         "actual_sessions": int(features["ga_session_id_count"].sum()),
         "actual_revenue": float(features["purchase_count"].sum() * 30000), # 단가 3만원 가정
-        "trend_purchase_rate": float(features["purchase_count"].sum() / len(features))
+        "trend_purchase_rate": float(features["purchase_count"].sum() / len(features)),
+        "trend_churn_rate": float(t7_final["predicted_churn"].sum() / len(t7_final))
     }])
 
     # 파일 저장 및 로그
@@ -295,6 +321,7 @@ def predict_and_save(features: pd.DataFrame):
     t8_final.to_csv(t8_path, index=False)
 
     print(f"✅ 완료! 모델: {PURCHASE_MODEL_PATH}")
+    print(f"✅ 완료! 모델: {CHURN_MODEL_PATH}")
     print(f"✅ 완료! T7: {t7_path}\n✅ 완료! T8: {t8_path}", flush=True)
 
 if __name__ == "__main__":
