@@ -1,2 +1,0 @@
-prediction_date,total_users,predicted_purchasers,predicted_purchase_rate,avg_purchase_probability,high_value_count,high_risk_count,actual_sessions,actual_revenue,trend_purchase_rate
-2026-03-05,270155,4092,0.015146860135847939,0.015373491045903557,4132,0,360130,479010000.0,0.05910310747533823
