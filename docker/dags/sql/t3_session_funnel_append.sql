@@ -91,7 +91,7 @@ funnel AS (
 churn AS (
   -- 이탈 세션 판별: 같은 유저의 다음 세션까지 15일 초과 시 이탈로 간주
   -- 주의: 당일 데이터만 보므로 일내 마지막 세션의 next_session_date는 NULL
-  --       → DATE_DIFF(DATE '2021-01-16', session_date, DAY)는 음수 → churn_session_flag = 0
+  --       → COALESCE(NULL, session_date) = session_date → DATE_DIFF = 0 → churn_session_flag = 0
   SELECT
     *,
     LEAD(session_date) OVER (
@@ -114,11 +114,11 @@ SELECT
     ELSE        '발견'
   END AS session_funnel_stage,
 
-  -- 이탈 세션 여부: 다음 세션까지 15일 초과 또는 마지막 세션
-  -- 증분 모드에서는 일내 마지막 세션의 경우 항상 0 (미래 데이터 없음)
+  -- 이탈 세션 여부: 다음 세션까지 15일 초과이면 1
+  -- next_session_date가 NULL(당일 마지막 세션)이면 session_date 자신으로 대체 → diff = 0 → 항상 0
   IF(
     DATE_DIFF(
-      COALESCE(next_session_date, DATE '2021-01-16'),
+      COALESCE(next_session_date, session_date),
       session_date,
       DAY
     ) > 15, 1, 0
