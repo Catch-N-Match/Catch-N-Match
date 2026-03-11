@@ -18,6 +18,7 @@ GA4 raw 데이터 적재 및 테이블 분리
 대시보드 시각화 연동
 
 2. 디렉토리 구조
+```
 CATCH-N-MATCH/
 ├── credentials/
 ├── data/
@@ -43,7 +44,7 @@ CATCH-N-MATCH/
 │       └── ml_predict.py
 ├── .env.example
 └── .gitignore
-
+```
 4. 실행 환경
 
 Docker
