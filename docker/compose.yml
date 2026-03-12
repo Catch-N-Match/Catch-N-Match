@@ -32,11 +32,14 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DEFAULT_TIMEZONE=Asia/Seoul
+      - TZ=Asia/Seoul                                    # 컨테이너 시스템 시간 → 로그 폴더명이 KST 날짜 기준으로 생성됨
       - AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT=google-cloud-platform://?key_path=%2Fopt%2Fairflow%2Fcredentials%2Fservice_account.json
       - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - BQ_DATASET=${BQ_DATASET}
       - GCS_BUCKET=${GCS_BUCKET}
+      - AIRFLOW_DEPLOY_DATETIME=${AIRFLOW_DEPLOY_DATETIME}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
@@ -61,13 +64,14 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DEFAULT_TIMEZONE=Asia/Seoul
+      - TZ=Asia/Seoul                                    # 컨테이너 시스템 시간 → 로그 폴더명이 KST 날짜 기준으로 생성됨
       - AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT=google-cloud-platform://?key_path=%2Fopt%2Fairflow%2Fcredentials%2Fservice_account.json
       - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - BQ_DATASET=${BQ_DATASET}
       - GCS_BUCKET=${GCS_BUCKET}
-     
-     
+      - AIRFLOW_DEPLOY_DATETIME=${AIRFLOW_DEPLOY_DATETIME}
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
@@ -90,11 +94,14 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DEFAULT_TIMEZONE=Asia/Seoul
+      - TZ=Asia/Seoul                                    # 컨테이너 시스템 시간 → 로그 폴더명이 KST 날짜 기준으로 생성됨
       - AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT=google-cloud-platform://?key_path=%2Fopt%2Fairflow%2Fcredentials%2Fservice_account.json
       - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/credentials/service_account.json
       - GCP_PROJECT_ID=${GCP_PROJECT_ID}
       - BQ_DATASET=${BQ_DATASET}
       - GCS_BUCKET=${GCS_BUCKET}
+      - AIRFLOW_DEPLOY_DATETIME=${AIRFLOW_DEPLOY_DATETIME}
     volumes:
       - ..:/app
       - ./dags:/opt/airflow/dags

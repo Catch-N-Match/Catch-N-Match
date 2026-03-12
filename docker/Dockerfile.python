@@ -29,7 +29,8 @@ COPY src/ML/models/ /app/models/
 COPY ./src/ML/ml_predict.py /app/ml_predict.py
 
 # [팀장님 브랜치 추가] 3. ML 환경 검증 (선택 사항)
-RUN python -c "import pandas; import sklearn; import xgboost; print('ML Environment Setup OK')"
+# RUN python -c "import pandas; import sklearn; import xgboost; print('ML Environment Setup OK')"
+RUN python -c "import pandas; import polars; print('Polars Version:', polars.__version__)"
 
 # [실행] 최종 실행 명령
 CMD ["python", "ml_predict.py"]

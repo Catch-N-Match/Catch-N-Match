@@ -41,27 +41,37 @@ GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 BQ_DATASET     = os.getenv("BQ_DATASET")
 
 # ---------------------------------------------------------------------------
-# 날짜 시뮬레이션 기준 (DAG1과 동일)
-# DAG2는 DAG1보다 1분 늦게 실행되므로 execution_date가 달라
-# DAG1의 XCom을 직접 참조하면 execution_date 불일치로 None 반환됨.
-# → DAG2 내부에서 동일한 공식으로 ga4_date를 직접 계산하여 해결.
+# GA4 시뮬레이션 시작 날짜 (DAG1과 동일)
+# DAG2/DAG3는 start_date가 5분 오프셋이므로 cross-DAG XCom 대신 자체 계산
 # ---------------------------------------------------------------------------
-GA4_SIMULATION_START = pendulum.datetime(2021, 1, 17, tz="UTC")
+GA4_SIMULATION_START = pendulum.datetime(2021, 1, 17, tz="Asia/Seoul")
+
+# ---------------------------------------------------------------------------
+# XCom 템플릿: 동일 DAG의 compute_ga4_date 태스크가 push한 ga4_date 값을 참조
+# Airflow의 Jinja 렌더링 시점에 실제 날짜 문자열(예: '20210117')로 치환됨
+# ---------------------------------------------------------------------------
+_GA4_DATE = "{{ ti.xcom_pull(task_ids='compute_ga4_date') }}"
 
 
 def compute_ga4_date(execution_date, **context):
-    """DAG1과 동일한 공식으로 ga4_date 계산 (XCom push)."""
+    """
+    현재 DAG의 execution_date와 start_date를 기반으로 GA4 시뮬레이션 날짜를 계산한다.
+
+    DAG2의 schedule이 5/10 * * * * (DAG1보다 5분 오프셋)이므로,
+    cross-DAG XCom pull 대신 동일 공식으로 자체 계산하여 run_id 불일치 문제를 방지한다.
+
+    Args:
+        execution_date: Airflow가 자동 주입하는 현재 run의 execution_date
+    Returns:
+        ga4_date 문자열 (예: '20210117') - XCom으로 자동 push됨
+    """
     dag_start       = context["dag"].start_date
     delta_seconds   = int((execution_date - dag_start).total_seconds())
-    delta_intervals = delta_seconds // 600  # 600초 = 10분 = 1 GA4 일
+    delta_intervals = delta_seconds // 600          # 600초 = 10분 = 1 GA4 일
     ga4_date        = GA4_SIMULATION_START.add(days=delta_intervals)
     result          = ga4_date.format("YYYYMMDD")
     print(f"execution_date={execution_date}  delta={delta_intervals}일  →  ga4_date={result}")
-    return result
-
-
-# XCom 템플릿: 로컬 compute_ga4_date 태스크에서 ga4_date 값을 참조
-_GA4_DATE = "{{ ti.xcom_pull(task_ids='compute_ga4_date') }}"
+    return result  # XCom으로 자동 push
 
 
 def load_sql(filename: str) -> str:
@@ -92,14 +102,31 @@ def load_sql(filename: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# DAG start_date: DAG1과 동일하게 AIRFLOW_DEPLOY_DATE env 변수로 관리
+# ExternalTaskSensor가 execution_date 단위로 매칭하므로, DAG1과 start_date가 반드시 일치해야 함
+# ---------------------------------------------------------------------------
+_DEPLOY_DT_STR = os.getenv("AIRFLOW_DEPLOY_DATETIME")
+if not _DEPLOY_DT_STR:
+    raise ValueError(
+        "AIRFLOW_DEPLOY_DATETIME 환경변수가 설정되지 않았습니다. "
+        ".env 파일에 AIRFLOW_DEPLOY_DATETIME=YYYY-MM-DDTHH:MM:SS 를 추가하세요. (KST 기준)"
+    )
+_DAG_START_DATE = pendulum.parse(_DEPLOY_DT_STR, tz="Asia/Seoul").add(minutes=5)
+# DAG1보다 5분 뒤 첫 인터벌 시작 → execution_delta=5min과 함께 DAG1 run을 정확히 매칭
+
+# GA4 데이터 범위: 2021-01-17 ~ 2021-01-31 (15일) → DAG1과 동일하게 end_date 설정
+_DAG_END_DATE = _DAG_START_DATE.add(minutes=14 * 10)
+
+# ---------------------------------------------------------------------------
 # DAG 정의
 # ---------------------------------------------------------------------------
 with DAG(
     dag_id="daily_bq_update",
-    start_date=pendulum.datetime(2026, 3, 6, 0, 0, 0, tz="UTC"),  # DAG1과 동일한 시작일 고정
-    schedule_interval="1/10 * * * *",  # DAG1(00분)보다 1분 늦게 실행 → 매시 01/11/21/31/41/51분
-    catchup=True,                       # start_date부터 순차 실행 → Jan 17부터 시작 보장
-    max_active_runs=1,                  # 동시 실행 1개로 제한 → 날짜 순서 보장
+    start_date=_DAG_START_DATE,        # .env의 AIRFLOW_DEPLOY_DATE (DAG1과 동일)
+    end_date=_DAG_END_DATE,            # GA4 2021-01-31 (15번째 인터벌)까지만 실행
+    schedule_interval="5/10 * * * *",  # 매시 05/15/25/35/45/55분 실행 (DAG1보다 5분 뒤)
+    catchup=False,                     # DAG1과 동일하게 False: 백로그 없이 10분마다 1개씩 실행
+    max_active_runs=1,                  # 동시 실행 제한 (DAG1과 순서 보장)
     tags=["analytics", "bigquery"],
 ) as dag:
 
@@ -117,6 +144,17 @@ with DAG(
         timeout=7200,                          # 2시간 대기 후 실패
         poke_interval=60,                      # 60초마다 완료 여부 확인
         mode="reschedule",                     # 대기 중 worker 슬롯 반환
+        execution_delta=timedelta(minutes=5),  # DAG2 execution_date - 5분 = DAG1 execution_date
+    )
+
+    # -----------------------------------------------------------------------
+    # Task 0-1: GA4 시뮬레이션 날짜 계산
+    # DAG2 schedule이 5/10 * * * * (DAG1보다 5분 오프셋)이므로 cross-DAG XCom 대신
+    # 동일 공식으로 자체 계산 → run_id 불일치로 인한 None 반환 문제 방지
+    # -----------------------------------------------------------------------
+    compute_ga4_date_task = PythonOperator(
+        task_id="compute_ga4_date",
+        python_callable=compute_ga4_date,
     )
 
     # -----------------------------------------------------------------------
@@ -262,18 +300,17 @@ with DAG(
     # 태스크 의존성 정의
     #
     # wait_for_dag1
-    #     └─► append_to_stored_data
-    #             ├─► t1_append          (병렬)
-    #             ├─► t2_order_append    (병렬)
-    #             ├─► t2_detail_append   (병렬)
-    #             └─► t3_session_funnel_append (병렬)
-    #                     ├─► t4_funnel_daily_append    (병렬)
-    #                     └─► t5_device_channel_replace (병렬)
-    #                             └─► t6_user_feature_replace
+    #     └─► compute_ga4_date
+    #             └─► append_to_stored_data
+    #                     ├─► t1_append          (병렬)
+    #                     ├─► t2_order_append    (병렬)
+    #                     ├─► t2_detail_append   (병렬)
+    #                     └─► t3_session_funnel_append (병렬)
+    #                             ├─► t4_funnel_daily_append    (병렬)
+    #                             └─► t5_device_channel_replace (병렬)
+    #                                     └─► t6_user_feature_replace
     # -----------------------------------------------------------------------
-    # compute_ga4_date와 wait_for_dag1은 병렬 실행 (서로 독립적)
-    # 둘 다 완료된 후 append_to_stored_data 실행
-    [get_ga4_date, wait_for_dag1] >> append_to_stored_data
+    wait_for_dag1 >> compute_ga4_date_task >> append_to_stored_data
 
     # stored-data-77days APPEND 완료 후 T1~T3 병렬 실행
     append_to_stored_data >> [t1_append, t2_order_append, t2_detail_append, t3_session_funnel_append]

@@ -20,7 +20,7 @@ LOCAL_DATA_DIR = "/opt/airflow/data/raw"
 # 날짜 시뮬레이션 기준
 # 배포일(start_date) 기준 Day 1 = 2021-01-17, Day 2 = 2021-01-18, ...
 # ---------------------------------------------------------------------------
-GA4_SIMULATION_START = pendulum.datetime(2021, 1, 17, tz="UTC")
+GA4_SIMULATION_START = pendulum.datetime(2021, 1, 17, tz="Asia/Seoul")
 
 # ---------------------------------------------------------------------------
 # SQL 로딩
@@ -90,14 +90,37 @@ def merge_csv_files(ga4_date: str, **_):
 # ---------------------------------------------------------------------------
 # DAG 정의
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# DAG start_date: .env의 AIRFLOW_DEPLOY_DATE 환경변수로 관리
+# 이 날짜 기준 Day 1 = GA4 2021-01-17 (delta=0 인터벌)
+# 완전 재시작(docker-compose down -v) 시 .env의 날짜를 오늘로 업데이트할 것
+# ---------------------------------------------------------------------------
+_DEPLOY_DT_STR = os.getenv("AIRFLOW_DEPLOY_DATETIME")
+if not _DEPLOY_DT_STR:
+    raise ValueError(
+        "AIRFLOW_DEPLOY_DATETIME 환경변수가 설정되지 않았습니다. "
+        ".env 파일에 AIRFLOW_DEPLOY_DATETIME=YYYY-MM-DDTHH:MM:SS 를 추가하세요. (KST 기준)"
+    )
+_DAG_START_DATE = pendulum.parse(_DEPLOY_DT_STR, tz="Asia/Seoul")
+# KST로 파싱 → Airflow가 내부적으로 UTC로 정규화
+# context["dag"].start_date도 UTC 반환 → delta 계산 시 타임존 불일치 없음
+# ※ 날짜만(YYYY-MM-DD) 쓰면 KST 자정 = UTC 전날 15:00 → 9시간 오프셋 발생하므로 시각 필수
+
+# GA4 데이터 범위: 2021-01-17 ~ 2021-01-31 (15일)
+# 15번째 인터벌 execution_date = start_date + 14 × 10분
+# end_date 이후 execution_date는 스케줄되지 않음 → 정확히 15번만 실행
+_DAG_END_DATE = _DAG_START_DATE.add(minutes=14 * 10)
+
 _XCOM_GA4_DATE = "{{ ti.xcom_pull(task_ids='compute_ga4_date') }}"
 
 with DAG(
     dag_id="daily_ga4_ingestion",
-    start_date=pendulum.datetime(2026, 3, 6, 0, 0, 0, tz="UTC"),  # 배포 시점 고정 (재로드 시 delta_days 틀어짐 방지)
+    start_date=_DAG_START_DATE,            # .env의 AIRFLOW_DEPLOY_DATE (Docker 최초 실행일)
+    end_date=_DAG_END_DATE,                # GA4 2021-01-31 (15번째 인터벌)까지만 실행
     schedule_interval="0/10 * * * *",  # 매시 00/10/20/30/40/50분 실행 (테스트용, 실제 배포 시 @daily로 복구)
-    catchup=True,                       # start_date부터 순차 실행 → Jan 17부터 시작 보장
-    max_active_runs=1,                  # 동시 실행 1개로 제한 → 날짜 순서 보장 및 BQ 중복 방지
+    catchup=False,  # AIRFLOW_DEPLOY_DATETIME을 실행 시각으로 설정 + catchup=False
+                    # → 백로그 없이 "지금 이 순간"의 인터벌만 실행 → 10분마다 GA4 1일치 처리
+    max_active_runs=3,
     tags=["ga4", "ingestion"],
 ) as dag:
 
@@ -128,6 +151,7 @@ with DAG(
             }
         },
         gcp_conn_id="google_cloud_default",
+        force_rerun=True,   # 같은 execution_date를 여러 로컬에서 실행 시 job ID 충돌(409) 방지: UUID 기반 새 job ID 생성
     )
 
     # ------------------------------------------------------------------
@@ -144,6 +168,7 @@ with DAG(
         export_format="CSV",
         print_header=True,
         gcp_conn_id="google_cloud_default",
+        force_rerun=True,   # 같은 execution_date를 여러 로컬에서 실행 시 job ID 충돌(409) 방지: UUID 기반 새 job ID 생성
     )
 
     # ------------------------------------------------------------------
