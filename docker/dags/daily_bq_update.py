@@ -139,7 +139,8 @@ with DAG(
     wait_for_dag1 = ExternalTaskSensor(
         task_id="wait_for_dag1",
         external_dag_id="daily_ga4_ingestion",
-        external_task_id="merge_csv_files",   # DAG1의 마지막 태스크
+        external_task_id="merge_csv_files",    # DAG1의 마지막 태스크
+        execution_delta=timedelta(minutes=1),  # DAG2는 1분 늦게 실행되므로 1분 전 DAG1 run을 참조
         timeout=7200,                          # 2시간 대기 후 실패
         poke_interval=60,                      # 60초마다 완료 여부 확인
         mode="reschedule",                     # 대기 중 worker 슬롯 반환
@@ -152,6 +153,17 @@ with DAG(
     # 동일 공식으로 자체 계산 → run_id 불일치로 인한 None 반환 문제 방지
     # -----------------------------------------------------------------------
     compute_ga4_date_task = PythonOperator(
+        task_id="compute_ga4_date",
+        python_callable=compute_ga4_date,
+    )
+
+    # -----------------------------------------------------------------------
+    # Task 0-1: ga4_date 계산 (DAG1과 동일한 공식, XCom push)
+    # DAG1의 XCom을 직접 참조하지 않고 로컬에서 재계산
+    # (DAG1과 execution_date가 1분 다르므로 XCom 직접 참조 시 None 반환)
+    # wait_for_dag1과 병렬 실행 가능 (서로 독립적)
+    # -----------------------------------------------------------------------
+    get_ga4_date = PythonOperator(
         task_id="compute_ga4_date",
         python_callable=compute_ga4_date,
     )
