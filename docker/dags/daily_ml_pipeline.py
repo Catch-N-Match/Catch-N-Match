@@ -55,7 +55,7 @@ ML_SCRIPT_PATH = "/app/src/ML/ml_predict.py"
 
 # ml_predict.py가 읽는 고정 입력 파일 경로
 ML_INPUT_PATH = "/app/data/raw/raw_data_with_gmt.csv"
-
+MLFLOW_LOG_SCRIPT_PATH = "/app/src/ML/mlflow_log.py"
 # ---------------------------------------------------------------------------
 # GA4 시뮬레이션 시작 날짜 (DAG1과 동일)
 # DAG3는 start_date가 5분 오프셋이므로 cross-DAG XCom 대신 자체 계산
@@ -137,6 +137,25 @@ def run_ml_predict(ga4_date: str, **_):
         capture_output=True,
         text=True,
     )
+
+def run_mlflow_log(ga4_date: str, **_):
+    """
+    mlflow_log.py를 실행하여 T7/T8 예측 결과를 MLflow에 기록한다.
+    Args:
+        ga4_date: GA4 시뮬레이션 날짜 (예: '20210117')
+    """
+    print(f"mlflow_log.py 실행 시작 (ga4_date={ga4_date})")
+    result = subprocess.run(
+        ["python", MLFLOW_LOG_SCRIPT_PATH, ga4_date],
+        capture_output=True,
+        text=True,
+    )
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr)
+    if result.returncode != 0:
+        raise RuntimeError(f"mlflow_log.py 실행 실패 (returncode={result.returncode})")    
 
     # 실행 로그 출력
     if result.stdout:
@@ -256,7 +275,7 @@ with DAG(
     )
 
     # -----------------------------------------------------------------------
-    # Task 2: ML 예측 실행
+    # Task 2-1: ML 예측 실행
     # ml_predict.py 실행 → T7_{date}.csv, T8_{date}.csv 생성
     # -----------------------------------------------------------------------
     ml_predict = PythonOperator(
@@ -264,6 +283,15 @@ with DAG(
         python_callable=run_ml_predict,
         op_kwargs={"ga4_date": _GA4_DATE},
     )
+
+    # Task 2-2: MLFLOW 예측 결과 기록 
+    # -----------------------------------------------------------------------
+    mlflow_log = PythonOperator(
+        task_id="mlflow_log",
+        python_callable=run_mlflow_log,
+        op_kwargs={"ga4_date": _GA4_DATE},
+    )
+    # -----------------------------------------------------------------------
 
     # -----------------------------------------------------------------------
     # Task 3: GCS 업로드
@@ -335,4 +363,6 @@ with DAG(
     #                                                                          ├─► upload_t7_to_bq (병렬)
     #                                                                          └─► upload_t8_to_bq (병렬)
     # -----------------------------------------------------------------------
-    wait_for_dag1 >> compute_ga4_date_task >> prepare_input >> ml_predict >> upload_gcs >> [upload_t7_to_bq, upload_t8_to_bq]
+    # wait_for_dag1 >> compute_ga4_date_task >> prepare_input >> ml_predict >> upload_gcs >> [upload_t7_to_bq, upload_t8_to_bq]
+    # mlflow 추가후 바뀐 의존성 
+    wait_for_dag1 >> compute_ga4_date_task >> prepare_input >> ml_predict >> mlflow_log >> upload_gcs >> [upload_t7_to_bq, upload_t8_to_bq]

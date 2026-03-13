@@ -9,6 +9,10 @@ services:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
+    entrypoint: >
+      bash -c "
+      echo 'CREATE DATABASE mlflow;' > /docker-entrypoint-initdb.d/init-mlflow.sql;
+      /usr/local/bin/docker-entrypoint.sh postgres"
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
     healthcheck:
@@ -86,6 +90,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.python
     container_name: airflow-scheduler
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -110,5 +116,32 @@ services:
       - ../credentials:/opt/airflow/credentials
     command: airflow scheduler
 
+  # ---------- MLflow Tracking Server (추가) ----------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    command: mlflow server --host 0.0.0.0 --port 5000
+    container_name: mlflow
+    restart: on-failure
+    ports:
+      - "5000:5000"
+    environment:
+      # 주소 끝을 /airflow에서 /mlflow로 변경
+      - BACKEND_STORE_URI=postgresql://airflow:airflow@postgres:5432/mlflow
+    volumes:
+      - mlflow-data:/mlflow/artifacts
+      - ./mlruns:/mlruns  # 호스트와 컨테이너 경로 동기화
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: >
+      bash -c "
+      pip install psycopg2-binary &&
+      mlflow server 
+      --backend-store-uri postgresql://airflow:airflow@postgres:5432/mlflow
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000"
+
 volumes:
   postgres-db-volume:
+  mlflow-data:
