@@ -1,0 +1,36 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+
+# [공통] OS 패키지 설치 (develop 기준 유지)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+# [공통] pip 기초 도구 업그레이드
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# [공통] 의존성 파일 복사 및 설치
+COPY ./docker/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# [develop] Airflow 및 GCP 관련 패키지 (공통 환경 유지)
+RUN pip install --no-cache-dir "apache-airflow==2.9.1" \
+    google-cloud-bigquery db-dtypes
+
+# [팀장님 브랜치 추가] 1. 필요한 폴더 생성 (data, output, models 통합)
+RUN mkdir -p /app/data /app/output /app/models
+
+# [팀장님 브랜치 추가] 2. 모델 및 실행 소스 복사 
+# (경로가 develop에 합쳐질 때를 대비해 명확히 작성)
+COPY src/ML/models/ /app/models/
+COPY ./src/ML/ml_predict.py /app/ml_predict.py
+
+# [팀장님 브랜치 추가] 3. ML 환경 검증 (선택 사항)
+# RUN python -c "import pandas; import sklearn; import xgboost; print('ML Environment Setup OK')"
+RUN python -c "import pandas; import polars; print('Polars Version:', polars.__version__)"
+
+# [실행] 최종 실행 명령
+CMD ["python", "ml_predict.py"]
