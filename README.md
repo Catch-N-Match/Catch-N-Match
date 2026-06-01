@@ -261,3 +261,35 @@ docker exec -it airflow-scheduler bash -lc \
 "INPUT_DATA_PATH=/app/data/raw/raw_data_with_gmt.csv \
 OUTPUT_DIR=/app/output \
 python -u /app/src/ML/ml_predict.py"
+
+### 13. 실행화면 & 시연영상
+
+구매모델 학습<br>
+![purchase_model_learn](docs/purchase_model_learn.png)<br>
+
+구매모델 성능<br>
+![purchase_model](docs/purchase_model.png)<br>
+
+구매전환율<br>
+![구매전화율](docs/구매전환율.png)<br>
+
+
+퍼널분석<br>
+![퍼널분석](docs/퍼널분석.png)<br>
+
+일별세션 매출, 전환율<br>
+![일별세션매출전환율](docs/일별세션매출전환율.png)<br>
+
+polars 전처리시 메모리 변화와 시간 소모<br>
+![polars](docs/polars.png)<br>
+
+MLflow 로깅<br>
+![MLflow_logging](docs/MLflow_logging.png)<br>
+MLflow 실험관리<br>
+![MLflow](docs/MLflow.png)<br>
+
+시연영상<br>
+<video src="docs/시연영상.mp4" controls width="600"></video>
+
+### 14. DataFlow
+![DataFlow](docs/DataFlow.png)
