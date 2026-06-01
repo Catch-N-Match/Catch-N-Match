@@ -257,9 +257,9 @@ docker exec -it airflow-scheduler bash -lc "ls -al /app/src/ML/models"
 
 추론 스크립트 직접 실행
 
-### 13. 실행화면
-
 docker exec -it airflow-scheduler bash -lc \
 "INPUT_DATA_PATH=/app/data/raw/raw_data_with_gmt.csv \
 OUTPUT_DIR=/app/output \
 python -u /app/src/ML/ml_predict.py"
+
+### 13. 실행화면
