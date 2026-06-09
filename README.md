@@ -263,6 +263,8 @@ OUTPUT_DIR=/app/output \
 python -u /app/src/ML/ml_predict.py"
 
 ### 13. 실행화면 & 시연영상
+시연영상<br>
+![시연영상](docs/시연영상.gif)
 
 구매모델 학습<br>
 ![purchase_model_learn](docs/purchase_model_learn.png)<br>
@@ -288,8 +290,7 @@ MLflow 로깅<br>
 MLflow 실험관리<br>
 ![MLflow](docs/MLflow.png)<br>
 
-시연영상<br>
-<video src="docs/시연영상.mp4" controls width="600"></video>
+
 
 ### 14. DataFlow
 ![DataFlow](docs/DataFlow.png)
